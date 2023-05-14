@@ -1,0 +1,7 @@
+[package]
+name = "tauphi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+perf_event = {path = "../perf_event"}
