@@ -1,5 +1,5 @@
 use perf_event::sampling;
 fn main() {
-    sampling::safe_foo();
+    sampling::sample_cpu();
     println!("Hello, world!");
 }
