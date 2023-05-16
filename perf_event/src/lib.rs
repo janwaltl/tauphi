@@ -31,13 +31,14 @@ pub mod sampling {
     use super::*;
     use std::mem;
     use std::ptr;
+
     #[repr(C)]
     #[derive(Default, Debug)]
-    struct RecordSample {
+    pub struct CpuSample {
+        ip: u64,
         pid: u32,
         tid: u32,
         time: u64,
-        addr: u64,
         cpu: u32,
         cpu_pad: u32,
     }

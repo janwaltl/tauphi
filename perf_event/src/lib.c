@@ -85,7 +85,7 @@ pe_open_cpu_sample(size_t cpu, size_t frequency, size_t num_pages,
     attr.freq = 1;
 
     attr.sample_type =
-        PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_IP | PERF_SAMPLE_CPU;
+        PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_CPU | PERF_SAMPLE_IP;
     attr.read_format = 0;
 
     attr.disabled = 1;
