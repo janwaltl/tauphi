@@ -151,7 +151,8 @@ pe_get_event(const PerfEventHandle *handle, unsigned char *dest, size_t n,
             return 0;
 
         size_t n_to_copy = event_size < n ? event_size : n;
-        pe_memcpy(dest, buffer, tail + sizeof(event_header), buffer_size, 0);
+        pe_memcpy(dest, buffer, tail + sizeof(event_header), buffer_size,
+                  n_to_copy);
     }
 
     if (!peek_only) {
