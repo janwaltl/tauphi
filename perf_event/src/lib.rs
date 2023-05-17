@@ -1,116 +1,31 @@
-use std::os::raw::{c_int, c_uchar};
-
-#[repr(C)]
-#[derive(Debug)]
-struct PerfEventHandle {
-    fd: c_int,
-    perf_buffer: *mut u8,
-    perf_buffer_size: usize,
-}
-
-extern "C" {
-    fn pe_open_cpu_sample(
-        cpu: usize,
-        frequency: usize,
-        num_pages: usize,
-        handle: *mut PerfEventHandle,
-    ) -> bool;
-    fn pe_close(handle: *mut PerfEventHandle);
-
-    fn pe_start(handle: *const PerfEventHandle, do_reset: bool) -> bool;
-    fn pe_stop(handle: *const PerfEventHandle) -> bool;
-    fn pe_get_event(
-        handle: *const PerfEventHandle,
-        dest: *mut c_uchar,
-        n: usize,
-        peek_only: bool,
-    ) -> usize;
-}
-
-pub mod sampling {
-    use super::*;
-    use std::mem;
-    use std::ptr;
-
+mod pe {
+    use std::os::raw::{c_int, c_uchar};
     #[repr(C)]
-    #[derive(Default, Debug)]
-    pub struct CpuSample {
-        ip: u64,
-        pid: u32,
-        tid: u32,
-        time: u64,
-        cpu: u32,
-        cpu_pad: u32,
+    #[derive(Debug)]
+    pub struct PerfEventHandle {
+        pub fd: c_int,
+        pub perf_buffer: *mut u8,
+        pub perf_buffer_size: usize,
     }
 
-    pub struct CpuSampler {
-        handle: PerfEventHandle,
-    }
+    extern "C" {
+        pub fn pe_open_cpu_sample(
+            cpu: usize,
+            frequency: usize,
+            num_pages: usize,
+            handle: *mut PerfEventHandle,
+        ) -> bool;
+        pub fn pe_close(handle: *mut PerfEventHandle);
 
-    impl CpuSampler {
-        pub fn new(cpu: usize, frequency: usize) -> CpuSampler {
-            let mut handle = PerfEventHandle {
-                fd: 0,
-                perf_buffer: ptr::null_mut(),
-                perf_buffer_size: 0,
-            };
-            let sample_size = mem::size_of::<CpuSample>();
-            // Store roughly 10 seconds of events.
-            // perf_event requires the size to be a power of two.
-            // Assume 4KB pages right now.
-            let num_pages = (10 * frequency * sample_size / 4096 + 1).next_power_of_two();
-            unsafe {
-                if !pe_open_cpu_sample(cpu, frequency, num_pages, &mut handle) {
-                    panic!("Failed to open the sampler.");
-                }
-                if !pe_start(&handle, true) {
-                    panic!("Failed to start the sampler.");
-                }
-            }
-            CpuSampler { handle }
-        }
-
-        fn get_sample(self: &Self) -> Option<CpuSample> {
-            let expected_size = mem::size_of::<CpuSample>();
-
-            unsafe {
-                let mut sample = CpuSample::default();
-                let sample_size = pe_get_event(
-                    &self.handle,
-                    (&mut sample as *mut CpuSample) as *mut c_uchar,
-                    expected_size,
-                    false,
-                );
-                if sample_size == expected_size {
-                    Some(sample)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    impl Drop for CpuSampler {
-        fn drop(&mut self) {
-            unsafe {
-                if !pe_stop(&self.handle) {
-                    panic!("Failed to stop the sampler.");
-                }
-                pe_close(&mut self.handle);
-            }
-        }
-    }
-
-    impl Iterator for CpuSampler {
-        type Item = CpuSample;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            loop {
-                match self.get_sample() {
-                    None => (),
-                    x => return x,
-                }
-            }
-        }
+        pub fn pe_start(handle: *const PerfEventHandle, do_reset: bool) -> bool;
+        pub fn pe_stop(handle: *const PerfEventHandle) -> bool;
+        pub fn pe_get_event(
+            handle: *const PerfEventHandle,
+            dest: *mut c_uchar,
+            n: usize,
+            peek_only: bool,
+        ) -> usize;
     }
 }
+
+pub mod sampling;
