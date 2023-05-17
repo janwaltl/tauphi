@@ -1,24 +1,57 @@
+//! Sampling of CPUs or processes based leveraging Linux perf events.
 use crate::pe::*;
 use std::mem;
 use std::os::raw::c_uchar;
 use std::ptr;
 
+/// CPU sample
+/// layout-complatible with the raw perf_event sample.
 #[repr(C)]
 #[derive(Default, Debug)]
 pub struct CpuSample {
-    ip: u64,
-    pid: u32,
-    tid: u32,
-    time: u64,
-    cpu: u32,
-    cpu_pad: u32,
+    /// Instruction pointer
+    pub ip: u64,
+    /// Process ID
+    pub pid: u32,
+    /// Thread ID
+    pub tid: u32,
+    /// Monotonic timestamp of this sample.
+    pub time: u64,
+    /// Sampled CPU
+    pub cpu: u32,
+    /// Padding
+    pub cpu_pad: u32,
 }
 
+/// Asynchronous sampling of a single CPU.
+///
+/// The sampling starts on `new()` and ends when `drop()` is called.
+/// The samples are collected in an internal buffer and `get_sample()`
+/// is used to retrieve them. If the internal buffers overflows,
+/// samples will be discarded.
+///
+/// # Examples
+/// ```no_run
+/// use perf_event::sampling::CpuSampler;
+/// let mut sampler = CpuSampler::new(0,10);
+/// // Samples are now being collected by the Linux kernel.
+/// loop{
+///     if let Some(sample) =  sampler.get_sample() {
+///         println!("Sample: {:?}", sample),
+///     }
+/// }
+/// drop(sampler); // Stop collecting the samples.
+/// ```
 pub struct CpuSampler {
     handle: PerfEventHandle,
 }
 
 impl CpuSampler {
+    /// Start a new sampler for the required CPU at given frequency.
+    ///
+    /// # Arguments
+    /// * `cpu` CPU to periodically sample, indexed from 0 to number of CPUs.
+    /// * `frequency` how many samples per second to generate.
     pub fn new(cpu: usize, frequency: usize) -> CpuSampler {
         let mut handle = PerfEventHandle {
             fd: 0,
@@ -41,6 +74,7 @@ impl CpuSampler {
         CpuSampler { handle }
     }
 
+    /// Return the next sample if there is one available.
     fn get_sample(self: &Self) -> Option<CpuSample> {
         let expected_size = mem::size_of::<CpuSample>();
 
@@ -61,6 +95,7 @@ impl CpuSampler {
     }
 }
 
+/// Close the opened underlying perf_event sampler.
 impl Drop for CpuSampler {
     fn drop(&mut self) {
         unsafe {
@@ -72,9 +107,13 @@ impl Drop for CpuSampler {
     }
 }
 
+/// Infinite iterator over the gathered samples.
+///
+/// `next()` blocks if necessary to wait for the next sample.
 impl Iterator for CpuSampler {
     type Item = CpuSample;
 
+    /// Returns the next sample, blocks until there is one.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.get_sample() {
