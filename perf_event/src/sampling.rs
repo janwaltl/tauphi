@@ -1,5 +1,6 @@
 //! Sampling of CPUs or processes based leveraging Linux perf events.
 use crate::pe::*;
+use libc;
 use std::mem;
 use std::os::raw::c_uchar;
 use std::ptr;
@@ -58,11 +59,15 @@ impl CpuSampler {
             perf_buffer: ptr::null_mut(),
             perf_buffer_size: 0,
         };
+        let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) as usize };
+
         let sample_size = mem::size_of::<CpuSample>();
-        // Store roughly 10 seconds of events.
+        // Store at least X seconds of events.
         // perf_event requires the size to be a power of two.
-        // Assume 4KB pages right now.
-        let num_pages = (10 * frequency * sample_size / 4096 + 1).next_power_of_two();
+        // That also handles the case of 0->1 pages to integer division.
+        let num_pages =
+            (Self::BUFFER_SIZE_SECS * frequency * sample_size / page_size).next_power_of_two();
+        assert!(num_pages > 0);
         unsafe {
             if !pe_open_cpu_sample(cpu, frequency, num_pages, &mut handle) {
                 panic!("Failed to open the sampler.");
@@ -93,6 +98,9 @@ impl CpuSampler {
             }
         }
     }
+
+    /// Store at least X seconds of pending samples in the internal perf buffer.
+    const BUFFER_SIZE_SECS: usize = 10;
 }
 
 /// Close the opened underlying perf_event sampler.
