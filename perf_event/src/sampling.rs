@@ -1,4 +1,5 @@
 //! Sampling of CPUs or processes based leveraging Linux perf events.
+use crate::error::PerfError;
 use crate::pe::*;
 use libc;
 use std::mem;
@@ -53,7 +54,7 @@ impl CpuSampler {
     /// # Arguments
     /// * `cpu` CPU to periodically sample, indexed from 0 to number of CPUs.
     /// * `frequency` how many samples per second to generate.
-    pub fn new(cpu: usize, frequency: usize) -> CpuSampler {
+    pub fn new(cpu: usize, frequency: usize) -> Result<CpuSampler, PerfError> {
         let mut handle = PerfEventHandle {
             fd: 0,
             perf_buffer: ptr::null_mut(),
@@ -70,13 +71,13 @@ impl CpuSampler {
         assert!(num_pages > 0);
         unsafe {
             if !pe_open_cpu_sample(cpu, frequency, num_pages, &mut handle) {
-                panic!("Failed to open the sampler.");
+                return Err(PerfError::FailedOpen);
             }
             if !pe_start(&handle, true) {
-                panic!("Failed to start the sampler.");
+                return Err(PerfError::FailedStart);
             }
         }
-        CpuSampler { handle }
+        Ok(CpuSampler { handle })
     }
 
     /// Return the next sample if there is one available.

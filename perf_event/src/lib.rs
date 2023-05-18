@@ -28,4 +28,5 @@ mod pe {
     }
 }
 
+pub mod error;
 pub mod sampling;
