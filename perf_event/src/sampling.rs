@@ -38,7 +38,7 @@ pub struct CpuSample {
 /// // Samples are now being collected by the Linux kernel.
 /// loop{
 ///     if let Some(sample) =  sampler.get_sample() {
-///         println!("Sample: {:?}", sample),
+///         println!("Sample: {:?}", sample);
 ///     }
 /// }
 /// drop(sampler); // Stop collecting the samples.
@@ -80,7 +80,7 @@ impl CpuSampler {
     }
 
     /// Return the next sample if there is one available.
-    fn get_sample(self: &Self) -> Option<CpuSample> {
+    pub fn get_sample(self: &Self) -> Option<CpuSample> {
         let expected_size = mem::size_of::<CpuSample>();
 
         unsafe {
