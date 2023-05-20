@@ -70,7 +70,7 @@ impl CpuSampler {
             (Self::BUFFER_SIZE_SECS * frequency * sample_size / page_size).next_power_of_two();
         assert!(num_pages > 0);
         unsafe {
-            if !pe_open_cpu_sample(cpu, frequency, num_pages, &mut handle) {
+            if !pe_open_event_sampler(cpu as i32, -1, frequency, num_pages, &mut handle) {
                 return Err(PerfError::FailedOpen);
             }
             if !pe_start(&handle, true) {

@@ -1,4 +1,5 @@
 mod pe {
+    use libc::pid_t;
     use std::os::fd::AsRawFd;
     use std::os::raw::{c_int, c_uchar};
     #[repr(C)]
@@ -34,17 +35,23 @@ mod pe {
         ///
         /// # Arguments
         ///
-        /// * `cpu` Index of CPU to start sampling.
+        /// * `cpu` Index of CPU to start sampling, -1 to sample all CPUs.
+        /// * `pid` Process ID to sample, -1 to sample all processes.
         /// * `frequency` Number of samples per second to generate.
         /// * `num_pages` Size of the internal buffer for storing samples,
         ///   in number of pages. Must be a power of two.
         /// * `handle` Handle to initialize the sample.
         ///
+        /// Do note that either `cpu` or `pid` must not be `-1`, one cannot sample all processes on all
+        /// CPUs, create an event per-CPU instead.
+        ///
+        ///
         /// # Returns
         ///
         /// Whether the new handle has been initialized.
-        pub fn pe_open_cpu_sample(
-            cpu: usize,
+        pub fn pe_open_event_sampler(
+            cpu: c_int,
+            pid: pid_t,
             frequency: usize,
             num_pages: usize,
             handle: *mut PerfEventHandle,
