@@ -75,8 +75,8 @@ pe_open(const struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
 }
 
 bool
-pe_open_event_sampler(int cpu, pid_t pid, size_t frequency, size_t num_pages,
-                      PerfEventHandle *handle) {
+pe_open_event_sampler(int cpu, pid_t pid, size_t frequency, size_t poll_freq,
+                      size_t num_pages, PerfEventHandle *handle) {
     struct perf_event_attr attr = {0};
     attr.type = PERF_TYPE_SOFTWARE;
     attr.size = sizeof(attr);
@@ -90,8 +90,7 @@ pe_open_event_sampler(int cpu, pid_t pid, size_t frequency, size_t num_pages,
 
     attr.disabled = 1;
     attr.sample_id_all = 0;
-    // Target 1sec poll roughly.
-    attr.wakeup_events = frequency;
+    attr.wakeup_events = poll_freq;
 
     return pe_open(&attr, pid, cpu, -1,
                    PERF_FLAG_FD_CLOEXEC | PERF_FLAG_FD_NO_GROUP, num_pages,

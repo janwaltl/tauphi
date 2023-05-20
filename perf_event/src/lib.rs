@@ -38,6 +38,7 @@ mod pe {
         /// * `cpu` Index of CPU to start sampling, -1 to sample all CPUs.
         /// * `pid` Process ID to sample, -1 to sample all processes.
         /// * `frequency` Number of samples per second to generate.
+        /// * `poll_freq` How many many samples per POLLIN activation.
         /// * `num_pages` Size of the internal buffer for storing samples,
         ///   in number of pages. Must be a power of two.
         /// * `handle` Handle to initialize the sample.
@@ -53,6 +54,7 @@ mod pe {
             cpu: c_int,
             pid: pid_t,
             frequency: usize,
+            poll_freq: usize,
             num_pages: usize,
             handle: *mut PerfEventHandle,
         ) -> bool;
