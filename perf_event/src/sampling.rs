@@ -104,16 +104,6 @@ impl CpuSampler {
     const BUFFER_SIZE_SECS: usize = 10;
 }
 
-/// Close the opened underlying perf_event sampler.
-impl Drop for CpuSampler {
-    fn drop(&mut self) {
-        unsafe {
-            pe_stop(&self.handle);
-            pe_close(&mut self.handle);
-        }
-    }
-}
-
 /// Infinite iterator over the gathered samples.
 ///
 /// `next()` blocks if necessary to wait for the next sample.

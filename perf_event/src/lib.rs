@@ -1,4 +1,5 @@
 mod pe {
+    use std::os::fd::AsRawFd;
     use std::os::raw::{c_int, c_uchar};
     #[repr(C)]
     #[derive(Debug)]
@@ -6,6 +7,21 @@ mod pe {
         pub fd: c_int,
         pub perf_buffer: *mut u8,
         pub perf_buffer_size: usize,
+    }
+
+    impl AsRawFd for PerfEventHandle {
+        fn as_raw_fd(&self) -> std::os::fd::RawFd {
+            self.fd
+        }
+    }
+
+    impl Drop for PerfEventHandle {
+        fn drop(&mut self) {
+            unsafe {
+                pe_stop(self);
+                pe_close(self);
+            }
+        }
     }
 
     extern "C" {
