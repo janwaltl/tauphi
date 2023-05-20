@@ -65,7 +65,7 @@ impl CpuSampler {
         let sample_size = mem::size_of::<CpuSample>();
         // Store at least X seconds of events.
         // perf_event requires the size to be a power of two.
-        // That also handles the case of 0->1 pages to integer division.
+        // That also handles the case of 0->1 pages due to integer division.
         let num_pages =
             (Self::BUFFER_SIZE_SECS * frequency * sample_size / page_size).next_power_of_two();
         assert!(num_pages > 0);
@@ -108,9 +108,7 @@ impl CpuSampler {
 impl Drop for CpuSampler {
     fn drop(&mut self) {
         unsafe {
-            if !pe_stop(&self.handle) {
-                panic!("Failed to stop the sampler.");
-            }
+            pe_stop(&self.handle);
             pe_close(&mut self.handle);
         }
     }
