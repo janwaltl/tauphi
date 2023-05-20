@@ -37,7 +37,7 @@ pub struct Sample {
 /// ```no_run
 /// use perf_event::sampling::Sampler;
 /// let pid = 12; // PID of the process to sample.
-/// let mut sampler = Sampler::new_pid(pid,10);
+/// let mut sampler = Sampler::new_pid(pid,10).unwrap();
 /// // Samples are now being collected by the Linux kernel.
 /// loop{
 ///     if let Some(sample) =  sampler.get_sample() {
