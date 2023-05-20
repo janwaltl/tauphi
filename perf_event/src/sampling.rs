@@ -6,26 +6,27 @@ use std::mem;
 use std::os::raw::c_uchar;
 use std::ptr;
 
-/// CPU sample
-/// layout-complatible with the raw perf_event sample.
+/// A collected sample.
+///
+/// Layout-complatible with the raw perf_event sample.
 #[repr(C)]
 #[derive(Default, Debug)]
-pub struct CpuSample {
+pub struct Sample {
     /// Instruction pointer
     pub ip: u64,
     /// Process ID
     pub pid: u32,
     /// Thread ID
     pub tid: u32,
-    /// Monotonic timestamp of this sample.
+    /// Timestamp of this sample in nanoseconds, monotonic
     pub time: u64,
-    /// Sampled CPU
+    /// Sampled CPU index
     pub cpu: u32,
     /// Padding
     pub cpu_pad: u32,
 }
 
-/// Asynchronous sampling of a single CPU.
+/// Asynchronous sampling of a single CPU or PID.
 ///
 /// The sampling starts on `new()` and ends when `drop()` is called.
 /// The samples are collected in an internal buffer and `get_sample()`
@@ -34,8 +35,9 @@ pub struct CpuSample {
 ///
 /// # Examples
 /// ```no_run
-/// use perf_event::sampling::CpuSampler;
-/// let mut sampler = CpuSampler::new(0,10);
+/// use perf_event::sampling::Sampler;
+/// let pid = 12; // PID of the process to sample.
+/// let mut sampler = Sampler::new_pid(pid,10);
 /// // Samples are now being collected by the Linux kernel.
 /// loop{
 ///     if let Some(sample) =  sampler.get_sample() {
@@ -44,17 +46,34 @@ pub struct CpuSample {
 /// }
 /// drop(sampler); // Stop collecting the samples.
 /// ```
-pub struct CpuSampler {
+pub struct Sampler {
     handle: PerfEventHandle,
 }
 
-impl CpuSampler {
+impl Sampler {
     /// Start a new sampler for the required CPU at given frequency.
     ///
     /// # Arguments
     /// * `cpu` CPU to periodically sample, indexed from 0 to number of CPUs.
     /// * `frequency` how many samples per second to generate.
-    pub fn new(cpu: usize, frequency: usize) -> Result<CpuSampler, PerfError> {
+    pub fn new_cpu(cpu: i32, frequency: usize) -> Result<Sampler, PerfError> {
+        Self::new(cpu, -1, frequency)
+    }
+
+    /// Start a new sampler of the given process at the given frequency.
+    ///
+    /// Do note this does not perform off-cpu sampling, if the process is
+    /// not running (for any reason), the samples are not collected.
+    ///
+    /// # Arguments
+    /// * `pid` Process with ID to periodically sample.
+    /// * `frequency` how many samples per second to generate.
+    pub fn new_pid(pid: i32, frequency: usize) -> Result<Sampler, PerfError> {
+        Self::new(-1, pid, frequency)
+    }
+
+    /// Wrapper around pe_open_event_sampler()
+    fn new(cpu: i32, pid: i32, frequency: usize) -> Result<Sampler, PerfError> {
         let mut handle = PerfEventHandle {
             fd: 0,
             perf_buffer: ptr::null_mut(),
@@ -62,7 +81,7 @@ impl CpuSampler {
         };
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) as usize };
 
-        let sample_size = mem::size_of::<CpuSample>();
+        let sample_size = mem::size_of::<Sample>();
         // Store at least X seconds of events.
         // perf_event requires the size to be a power of two.
         // That also handles the case of 0->1 pages due to integer division.
@@ -70,25 +89,25 @@ impl CpuSampler {
             (Self::BUFFER_SIZE_SECS * frequency * sample_size / page_size).next_power_of_two();
         assert!(num_pages > 0);
         unsafe {
-            if !pe_open_event_sampler(cpu as i32, -1, frequency, num_pages, &mut handle) {
+            if !pe_open_event_sampler(cpu as i32, pid as i32, frequency, num_pages, &mut handle) {
                 return Err(PerfError::FailedOpen);
             }
             if !pe_start(&handle, true) {
                 return Err(PerfError::FailedStart);
             }
         }
-        Ok(CpuSampler { handle })
+        Ok(Sampler { handle })
     }
 
     /// Return the next sample if there is one available.
-    pub fn get_sample(self: &Self) -> Option<CpuSample> {
-        let expected_size = mem::size_of::<CpuSample>();
+    pub fn get_sample(self: &Self) -> Option<Sample> {
+        let expected_size = mem::size_of::<Sample>();
 
         unsafe {
-            let mut sample = CpuSample::default();
+            let mut sample = Sample::default();
             let sample_size = pe_get_event(
                 &self.handle,
-                (&mut sample as *mut CpuSample) as *mut c_uchar,
+                (&mut sample as *mut Sample) as *mut c_uchar,
                 expected_size,
                 false,
             );
@@ -107,8 +126,8 @@ impl CpuSampler {
 /// Infinite iterator over the gathered samples.
 ///
 /// `next()` blocks if necessary to wait for the next sample.
-impl Iterator for CpuSampler {
-    type Item = CpuSample;
+impl Iterator for Sampler {
+    type Item = Sample;
 
     /// Returns the next sample, blocks until there is one.
     fn next(&mut self) -> Option<Self::Item> {
