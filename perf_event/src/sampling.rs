@@ -1,10 +1,13 @@
 //! Sampling of CPUs or processes based leveraging Linux perf events.
-use crate::error::PerfError;
-use crate::pe::*;
-use libc;
 use std::mem;
-use std::os::raw::c_uchar;
+use std::os::{fd::AsRawFd, raw::c_uchar};
 use std::ptr;
+use std::thread;
+
+use libc;
+use tokio::io::unix::AsyncFd;
+
+use crate::{error::PerfError, pe::*};
 
 /// A collected sample.
 ///
@@ -27,6 +30,8 @@ pub struct Sample {
 }
 
 /// Asynchronous sampling of a single CPU or PID.
+///
+/// Offers synchronous API, for fully asynchronous variant, see AsyncSampler.
 ///
 /// The sampling starts on `new()` and ends when `drop()` is called.
 /// The samples are collected in an internal buffer and `get_sample()`
@@ -134,19 +139,59 @@ impl Sampler {
     const BUFFER_SIZE_SECS: usize = 10;
 }
 
+/// Expose the raw perf_event file descriptor.
+impl AsRawFd for Sampler {
+    fn as_raw_fd(&self) -> std::os::fd::RawFd {
+        self.handle.as_raw_fd()
+    }
+}
+
 /// Infinite iterator over the gathered samples.
 ///
 /// `next()` blocks if necessary to wait for the next sample.
 impl Iterator for Sampler {
     type Item = Sample;
 
-    /// Returns the next sample, blocks until there is one.
+    /// Returns the next sample.
+    ///
+    /// Contains a busy loop, blocking until the sample is available.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.get_sample() {
                 None => (),
                 x => return x,
             }
+            thread::yield_now();
+        }
+    }
+}
+
+/// Sampler with asynchronous API.
+pub struct AsyncSampler {
+    poll_fd: AsyncFd<Sampler>,
+}
+
+impl AsyncSampler {
+    /// Construct an asynchronous version of the Sampler.
+    pub fn from_sync(sampler: Sampler) -> Result<AsyncSampler, PerfError> {
+        Ok(AsyncSampler {
+            poll_fd: AsyncFd::new(sampler)?,
+        })
+    }
+
+    /// Return the next sample.
+    pub async fn get_sample(self: &Self) -> Result<Sample, PerfError> {
+        loop {
+            // Try to get the sample from the ring buffer, non-blocking.
+            if let Some(sample) = self.poll_fd.get_ref().get_sample() {
+                return Ok(sample);
+            }
+
+            let mut guard = self.poll_fd.readable().await?;
+            // Clear the POLLIN flag immedietely. There is no actual read to do,
+            // perf_event only signals POLLIN once each time the wakeup counter
+            // overflows.
+            guard.clear_ready();
         }
     }
 }
