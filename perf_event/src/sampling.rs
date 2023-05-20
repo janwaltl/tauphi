@@ -87,9 +87,18 @@ impl Sampler {
         // That also handles the case of 0->1 pages due to integer division.
         let num_pages =
             (Self::BUFFER_SIZE_SECS * frequency * sample_size / page_size).next_power_of_two();
+        // Target poll every 100ms
+        let poll_freq: usize = 1.max(frequency / (1000 / Self::POLL_FREQUENCY_MS));
         assert!(num_pages > 0);
         unsafe {
-            if !pe_open_event_sampler(cpu as i32, pid as i32, frequency, num_pages, &mut handle) {
+            if !pe_open_event_sampler(
+                cpu as i32,
+                pid as i32,
+                frequency,
+                poll_freq,
+                num_pages,
+                &mut handle,
+            ) {
                 return Err(PerfError::FailedOpen);
             }
             if !pe_start(&handle, true) {
@@ -119,6 +128,8 @@ impl Sampler {
         }
     }
 
+    /// How often is POLLIN triggered on the sampler.
+    const POLL_FREQUENCY_MS: usize = 100;
     /// Store at least X seconds of pending samples in the internal perf buffer.
     const BUFFER_SIZE_SECS: usize = 10;
 }
