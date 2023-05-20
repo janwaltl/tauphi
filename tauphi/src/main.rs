@@ -1,5 +1,6 @@
 use perf_event::sampling;
-fn main() {
+
+fn sync_main() {
     let sampler = sampling::Sampler::new_cpu(0, 100).expect("Failed to start the sampling.");
 
     for val in sampler.take(10) {
@@ -7,4 +8,20 @@ fn main() {
     }
 
     println!("Hello, world!");
+}
+
+async fn async_main() {
+    let sampler = sampling::Sampler::new_cpu(0, 500).expect("Failed to start the sampling.");
+    let sampler = sampling::AsyncSampler::from_sync(sampler).unwrap();
+    for i in 1..5000 {
+        let sample = sampler.get_sample().await.unwrap();
+        if (i % 100) == 0 {
+            println!("#{i} {:#?}", sample);
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    async_main().await;
 }
