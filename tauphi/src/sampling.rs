@@ -1,7 +1,5 @@
 //! Sampling of CPUs or processes based leveraging Linux perf events.
-use std::mem;
-use std::os::{fd::AsRawFd, raw::c_uchar};
-use std::ptr;
+use std::os::fd::AsRawFd;
 use std::thread;
 
 use libc;
@@ -9,6 +7,8 @@ use tokio::io::unix::AsyncFd;
 
 use perf_event as pe;
 use perf_event::{self, error::PerfError};
+
+use crate::error::TauphiError;
 
 /// Maximum entries in the stack trace.
 ///
@@ -99,7 +99,7 @@ impl Sampler {
     /// # Arguments
     /// * `cpu` CPU to periodically sample, indexed from 0 to number of CPUs.
     /// * `frequency` how many samples per second to generate.
-    pub fn new_cpu(cpu: i32, frequency: usize) -> Result<Sampler, PerfError> {
+    pub fn new_cpu(cpu: i32, frequency: usize) -> Result<Sampler, TauphiError> {
         Self::new(cpu, -1, frequency)
     }
 
@@ -111,20 +111,15 @@ impl Sampler {
     /// # Arguments
     /// * `pid` Process with ID to periodically sample.
     /// * `frequency` how many samples per second to generate.
-    pub fn new_pid(pid: i32, frequency: usize) -> Result<Sampler, PerfError> {
+    pub fn new_pid(pid: i32, frequency: usize) -> Result<Sampler, TauphiError> {
         Self::new(-1, pid, frequency)
     }
 
     /// Wrapper around pe_open_event_sampler()
-    fn new(cpu: i32, pid: i32, frequency: usize) -> Result<Sampler, PerfError> {
-        let mut handle = pe::PerfEventHandle {
-            fd: 0,
-            perf_buffer: ptr::null_mut(),
-            perf_buffer_size: 0,
-        };
+    fn new(cpu: i32, pid: i32, frequency: usize) -> Result<Sampler, TauphiError> {
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) as usize };
 
-        let sample_size = mem::size_of::<Sample>();
+        let sample_size = core::mem::size_of::<Sample>();
         // Store at least X seconds of events.
         // perf_event requires the size to be a power of two.
         // That also handles the case of 0->1 pages due to integer division.
@@ -133,51 +128,38 @@ impl Sampler {
         // Target poll every 100ms
         let poll_freq: usize = 1.max(frequency / (1000 / Self::POLL_FREQUENCY_MS));
         assert!(num_pages > 0);
-        unsafe {
-            if !pe::pe_open_event_sampler(
-                cpu,
-                pid,
-                frequency,
-                poll_freq,
-                num_pages,
-                CALLCHAIN_DEPTH,
-                &mut handle,
-            ) {
-                return Err(PerfError::FailedOpen);
-            }
-            if !pe::pe_start(&handle, true) {
-                return Err(PerfError::FailedStart);
-            }
-        }
+        let handle =
+            pe::PerfEventHandle::new(cpu, pid, frequency, poll_freq, num_pages, CALLCHAIN_DEPTH)?;
+        handle.start(true)?;
         Ok(Sampler { handle })
     }
 
     /// Return the next sample if there is one available.
     pub fn get_sample(&self) -> Option<Sample> {
         /// Size of the fixed part of RawSample - without the trailing callchain.
-        const FIXED_HEADER_SIZE: usize = mem::size_of::<RawSample>() - 8 * CALLCHAIN_DEPTH;
+        const FIXED_HEADER_SIZE: usize = core::mem::size_of::<RawSample>() - 8 * CALLCHAIN_DEPTH;
 
-        unsafe {
-            let mut raw_sample = RawSample::default();
-            let sample_size = pe::pe_get_event(
-                &self.handle,
-                (&mut raw_sample as *mut RawSample) as *mut c_uchar,
-                mem::size_of::<RawSample>(),
+        let mut raw_sample = RawSample::default();
+        let sample_size = unsafe {
+            self.handle.get_event(
+                core::slice::from_raw_parts_mut(
+                    (&mut raw_sample as *mut RawSample) as *mut u8,
+                    core::mem::size_of::<RawSample>(),
+                ),
                 false,
-            );
-            if sample_size >= FIXED_HEADER_SIZE {
-                Some(Sample {
-                    ip: raw_sample.ip,
-                    pid: raw_sample.pid,
-                    tid: raw_sample.tid,
-                    time: raw_sample.time,
-                    cpu: raw_sample.cpu,
-                    callchain: raw_sample.callchain[0..raw_sample.callchain_entries as usize]
-                        .to_vec(),
-                })
-            } else {
-                None
-            }
+            )
+        };
+        if sample_size >= FIXED_HEADER_SIZE {
+            Some(Sample {
+                ip: raw_sample.ip,
+                pid: raw_sample.pid,
+                tid: raw_sample.tid,
+                time: raw_sample.time,
+                cpu: raw_sample.cpu,
+                callchain: raw_sample.callchain[0..raw_sample.callchain_entries as usize].to_vec(),
+            })
+        } else {
+            None
         }
     }
 
@@ -264,7 +246,7 @@ impl AsyncSampler {
 fn raw_sample_alignment_test() {
     assert_eq!(
         1024,
-        mem::size_of::<RawSample>(),
+        core::mem::size_of::<RawSample>(),
         "Ensure that size of the raw sample is nice."
     );
 }
