@@ -200,6 +200,7 @@ dependencies = [
 name = "tauphi"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "perf_event",
  "tokio",
 ]

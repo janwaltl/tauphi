@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 perf_event = {path = "../perf_event"}
 tokio = { version = "1.28.1", features = ["full"] }
+libc = "^0.2"

@@ -1,4 +1,4 @@
-use perf_event::sampling;
+pub mod sampling;
 
 #[tokio::main]
 async fn main() {

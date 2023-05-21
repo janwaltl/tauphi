@@ -7,7 +7,8 @@ use std::thread;
 use libc;
 use tokio::io::unix::AsyncFd;
 
-use crate::{error::PerfError, pe::*};
+use perf_event as pe;
+use perf_event::{self, error::PerfError};
 
 /// Maximum entries in the stack trace.
 ///
@@ -89,7 +90,7 @@ impl Default for RawSample {
 /// }
 /// ```
 pub struct Sampler {
-    handle: PerfEventHandle,
+    handle: pe::PerfEventHandle,
 }
 
 impl Sampler {
@@ -116,7 +117,7 @@ impl Sampler {
 
     /// Wrapper around pe_open_event_sampler()
     fn new(cpu: i32, pid: i32, frequency: usize) -> Result<Sampler, PerfError> {
-        let mut handle = PerfEventHandle {
+        let mut handle = pe::PerfEventHandle {
             fd: 0,
             perf_buffer: ptr::null_mut(),
             perf_buffer_size: 0,
@@ -133,7 +134,7 @@ impl Sampler {
         let poll_freq: usize = 1.max(frequency / (1000 / Self::POLL_FREQUENCY_MS));
         assert!(num_pages > 0);
         unsafe {
-            if !pe_open_event_sampler(
+            if !pe::pe_open_event_sampler(
                 cpu,
                 pid,
                 frequency,
@@ -144,7 +145,7 @@ impl Sampler {
             ) {
                 return Err(PerfError::FailedOpen);
             }
-            if !pe_start(&handle, true) {
+            if !pe::pe_start(&handle, true) {
                 return Err(PerfError::FailedStart);
             }
         }
@@ -158,7 +159,7 @@ impl Sampler {
 
         unsafe {
             let mut raw_sample = RawSample::default();
-            let sample_size = pe_get_event(
+            let sample_size = pe::pe_get_event(
                 &self.handle,
                 (&mut raw_sample as *mut RawSample) as *mut c_uchar,
                 mem::size_of::<RawSample>(),
