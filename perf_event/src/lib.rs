@@ -41,6 +41,7 @@ mod pe {
         /// * `poll_freq` How many many samples per POLLIN activation.
         /// * `num_pages` Size of the internal buffer for storing samples,
         ///   in number of pages. Must be a power of two.
+        /// * `callchain_depth_limit` Maximum length of the stack trace to record.
         /// * `handle` Handle to initialize the sample.
         ///
         /// Do note that either `cpu` or `pid` must not be `-1`, one cannot sample all processes on all
@@ -56,6 +57,7 @@ mod pe {
             frequency: usize,
             poll_freq: usize,
             num_pages: usize,
+            callchain_depth_limit: usize,
             handle: *mut PerfEventHandle,
         ) -> bool;
 

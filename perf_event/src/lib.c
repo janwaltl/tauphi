@@ -76,7 +76,8 @@ pe_open(const struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
 
 bool
 pe_open_event_sampler(int cpu, pid_t pid, size_t frequency, size_t poll_freq,
-                      size_t num_pages, PerfEventHandle *handle) {
+                      size_t num_pages, size_t callchain_depth_limit,
+                      PerfEventHandle *handle) {
     struct perf_event_attr attr = {0};
     attr.type = PERF_TYPE_SOFTWARE;
     attr.size = sizeof(attr);
@@ -84,9 +85,10 @@ pe_open_event_sampler(int cpu, pid_t pid, size_t frequency, size_t poll_freq,
     attr.sample_freq = frequency;
     attr.freq = 1;
 
-    attr.sample_type =
-        PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_CPU | PERF_SAMPLE_IP;
+    attr.sample_type = PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_CPU |
+                       PERF_SAMPLE_IP | PERF_SAMPLE_CALLCHAIN;
     attr.read_format = 0;
+    attr.sample_max_stack = callchain_depth_limit;
 
     attr.disabled = 1;
     attr.sample_id_all = 0;
