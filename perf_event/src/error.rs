@@ -7,6 +7,8 @@ pub enum PerfError {
     FailedOpen,
     #[error("perf_event could not be started.")]
     FailedStart,
+    #[error("perf_event could not be stopped.")]
+    FailedStop,
     #[error("perf_event encountered an IO error.")]
     FailedIO(#[from] io::Error),
 }
