@@ -70,10 +70,10 @@ impl Default for RawSample {
 
 /// Asynchronous sampling of a single CPU or PID.
 ///
-/// Offers synchronous API, for fully asynchronous variant, see AsyncSampler.
+/// Offers synchronous API, for fully asynchronous variant, see [AsyncSampler].
 ///
-/// The sampling starts on `new()` and ends when `drop()` is called.
-/// The samples are collected in an internal buffer and `get_sample()`
+/// The sampling starts on construction and ends when [drop()] is called.
+/// The samples are collected in an internal buffer and [Sampler::get_sample()]
 /// is used to retrieve them. If the internal buffers overflows,
 /// samples will be discarded.
 ///
@@ -81,14 +81,12 @@ impl Default for RawSample {
 /// ```no_run
 /// use perf_event::sampling::Sampler;
 /// let pid = 12; // PID of the process to sample.
-/// let mut sampler = Sampler::new_pid(pid,10).unwrap();
+/// let mut sampler = Sampler::new_pid(pid,10).expect("Failed to start the sampling");
 /// // Samples are now being collected by the Linux kernel.
-/// loop{
-///     if let Some(sample) =  sampler.get_sample() {
-///         println!("Sample: {:?}", sample);
-///     }
+/// // Use blocking iterator to access them.
+/// for sample in sampler.take(10) {
+///     println!("Sample: {:#?}", sample);
 /// }
-/// drop(sampler); // Stop collecting the samples.
 /// ```
 pub struct Sampler {
     handle: PerfEventHandle,
@@ -197,7 +195,7 @@ impl AsRawFd for Sampler {
 
 /// Infinite iterator over the gathered samples.
 ///
-/// `next()` blocks if necessary to wait for the next sample.
+/// [Sampler::next()] blocks if necessary to wait for the next sample.
 impl Iterator for Sampler {
     type Item = Sample;
 
@@ -216,6 +214,22 @@ impl Iterator for Sampler {
 }
 
 /// Sampler with asynchronous API.
+///
+/// See [Sampler] for synchronous, iterator-based variant.
+///
+/// # Examples
+/// ```no_run
+/// async fn async_main() {
+///     use perf_event::sampling::{Sampler,AsyncSampler};
+///     let sampler = Sampler::new_cpu(0, 5).expect("Failed to start the sampling.");
+///     let sampler = AsyncSampler::from_sync(sampler).unwrap();
+///     for i in 1..10 {
+///         let sample = sampler.get_sample().await.unwrap();
+///         println!("#{i} {:#?}", sample);
+///     }
+///     drop(sampler); // Stop collecting the samples.
+/// }
+/// ```
 pub struct AsyncSampler {
     poll_fd: AsyncFd<Sampler>,
 }
