@@ -10,4 +10,6 @@ pub enum TauphiError {
     Perf(#[from] pe::error::PerfError),
     #[error("IO error")]
     IO(#[from] io::Error),
+    #[error("Unexpected content of /proc/pid/maps file.")]
+    InvalidPIDMapsFromat,
 }

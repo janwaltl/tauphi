@@ -1,5 +1,6 @@
 pub mod error;
 pub mod sampling;
+pub mod symbols;
 
 #[tokio::main]
 async fn main() {
