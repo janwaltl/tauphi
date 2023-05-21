@@ -9,11 +9,13 @@ use tokio::io::unix::AsyncFd;
 
 use crate::{error::PerfError, pe::*};
 
-/// A collected sample.
+/// Maximum entries in the stack trace.
 ///
-/// Layout-complatible with the raw perf_event sample.
-#[repr(C)]
-#[derive(Default, Debug)]
+/// 123 ensures that the raw sample is 1KB in size.
+const CALLCHAIN_DEPTH: usize = 123;
+
+/// A collected sample.
+#[derive(Debug, Default)]
 pub struct Sample {
     /// Instruction pointer
     pub ip: u64,
@@ -25,8 +27,45 @@ pub struct Sample {
     pub time: u64,
     /// Sampled CPU index
     pub cpu: u32,
+    /// Instruction pointers for the callchain.
+    pub callchain: Vec<u64>,
+}
+
+/// Layout-complatible with the raw perf_event sample.
+#[repr(C)]
+#[derive(Debug)]
+struct RawSample {
+    /// Instruction pointer
+    ip: u64,
+    /// Process ID
+    pid: u32,
+    /// Thread ID
+    tid: u32,
+    /// Timestamp of this sample in nanoseconds, monotonic
+    time: u64,
+    /// Sampled CPU index
+    cpu: u32,
     /// Padding
-    pub cpu_pad: u32,
+    cpu_pad: u32,
+    /// Number of callchain entries in callchain array.
+    callchain_entries: u64,
+    /// Calchain instruction pointers.
+    callchain: [u64; CALLCHAIN_DEPTH],
+}
+
+impl Default for RawSample {
+    fn default() -> Self {
+        RawSample {
+            ip: 0,
+            pid: 0,
+            tid: 0,
+            time: 0,
+            cpu: 0,
+            cpu_pad: 0,
+            callchain_entries: 0,
+            callchain: [0; CALLCHAIN_DEPTH],
+        }
+    }
 }
 
 /// Asynchronous sampling of a single CPU or PID.
@@ -102,6 +141,7 @@ impl Sampler {
                 frequency,
                 poll_freq,
                 num_pages,
+                CALLCHAIN_DEPTH,
                 &mut handle,
             ) {
                 return Err(PerfError::FailedOpen);
@@ -115,20 +155,29 @@ impl Sampler {
 
     /// Return the next sample if there is one available.
     pub fn get_sample(self: &Self) -> Option<Sample> {
-        let expected_size = mem::size_of::<Sample>();
+        /// Size of the fixed part of RawSample - without the trailing callchain.
+        const FIXED_HEADER_SIZE: usize = mem::size_of::<RawSample>() - 8 * CALLCHAIN_DEPTH;
 
         unsafe {
-            let mut sample = Sample::default();
+            let mut raw_sample = RawSample::default();
             let sample_size = pe_get_event(
                 &self.handle,
-                (&mut sample as *mut Sample) as *mut c_uchar,
-                expected_size,
+                (&mut raw_sample as *mut RawSample) as *mut c_uchar,
+                mem::size_of::<RawSample>(),
                 false,
             );
-            if sample_size == expected_size {
-                Some(sample)
+            if sample_size >= FIXED_HEADER_SIZE {
+                return Some(Sample {
+                    ip: raw_sample.ip,
+                    pid: raw_sample.pid,
+                    tid: raw_sample.tid,
+                    time: raw_sample.time,
+                    cpu: raw_sample.cpu,
+                    callchain: raw_sample.callchain[0..raw_sample.callchain_entries as usize]
+                        .to_vec(),
+                });
             } else {
-                None
+                return None;
             }
         }
     }
@@ -194,4 +243,13 @@ impl AsyncSampler {
             guard.clear_ready();
         }
     }
+}
+
+#[test]
+fn raw_sample_alignment_test() {
+    assert_eq!(
+        1024,
+        mem::size_of::<RawSample>(),
+        "Ensure that size of the raw sample is nice."
+    );
 }
