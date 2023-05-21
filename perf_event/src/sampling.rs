@@ -134,8 +134,8 @@ impl Sampler {
         assert!(num_pages > 0);
         unsafe {
             if !pe_open_event_sampler(
-                cpu as i32,
-                pid as i32,
+                cpu,
+                pid,
                 frequency,
                 poll_freq,
                 num_pages,
@@ -152,7 +152,7 @@ impl Sampler {
     }
 
     /// Return the next sample if there is one available.
-    pub fn get_sample(self: &Self) -> Option<Sample> {
+    pub fn get_sample(&self) -> Option<Sample> {
         /// Size of the fixed part of RawSample - without the trailing callchain.
         const FIXED_HEADER_SIZE: usize = mem::size_of::<RawSample>() - 8 * CALLCHAIN_DEPTH;
 
@@ -165,7 +165,7 @@ impl Sampler {
                 false,
             );
             if sample_size >= FIXED_HEADER_SIZE {
-                return Some(Sample {
+                Some(Sample {
                     ip: raw_sample.ip,
                     pid: raw_sample.pid,
                     tid: raw_sample.tid,
@@ -173,9 +173,9 @@ impl Sampler {
                     cpu: raw_sample.cpu,
                     callchain: raw_sample.callchain[0..raw_sample.callchain_entries as usize]
                         .to_vec(),
-                });
+                })
             } else {
-                return None;
+                None
             }
         }
     }
@@ -243,7 +243,7 @@ impl AsyncSampler {
     }
 
     /// Return the next sample.
-    pub async fn get_sample(self: &Self) -> Result<Sample, PerfError> {
+    pub async fn get_sample(&self) -> Result<Sample, PerfError> {
         loop {
             // Try to get the sample from the ring buffer, non-blocking.
             if let Some(sample) = self.poll_fd.get_ref().get_sample() {
