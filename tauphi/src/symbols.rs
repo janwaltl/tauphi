@@ -2,7 +2,8 @@
 use crate::error::TauphiError;
 use std::fs;
 use std::io::{BufRead, BufReader, Error};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process;
 
 /// File (or its region) mapped in memory of another process.
 #[derive(Debug)]
@@ -32,7 +33,27 @@ pub struct PIDInfo {
     pub mapped_regions: Vec<MappedRegion>,
 }
 
-/// Parse a single line in /proc/<pid>/maps.
+/// Resolve instruction pointers of a single process into function names, source locations.
+///
+/// Uses `addr2line` child process to perform the translation.
+///
+/// # Examples
+/// ```no_run
+/// use std::path::Path;
+/// use symbols::SymbolResolver;
+/// let mut resolver = SymbolResolver::new(Path::new("./executable")).unwrap();
+///
+/// let (function, source) = resolver.resolve(0x118A).unwrap();
+///
+/// println!("Function {} at line {source}", function, source);
+/// ```
+pub struct SymbolResolver {
+    child: process::Child,
+    input: process::ChildStdin,
+    output: BufReader<process::ChildStdout>,
+}
+
+/// Parse a single line in `/proc/<pid>/maps`.
 fn parse_map_line(line: Result<String, Error>) -> Result<MappedRegion, TauphiError> {
     let line = line?;
     let mut it = line.splitn(6, ' ');
@@ -73,5 +94,65 @@ impl PIDInfo {
             cmdline,
             mapped_regions: regions?,
         })
+    }
+}
+
+impl SymbolResolver {
+    /// Create a new resolver of the given process.
+    ///
+    /// # Arguments
+    /// * `filename` Path to the executable whose symbols to resolve.
+    pub fn new(filename: &Path) -> Result<Self, TauphiError> {
+        let mut child = process::Command::new("/usr/bin/addr2line")
+            .stdin(process::Stdio::piped())
+            .stdout(process::Stdio::piped())
+            .arg("-ifCe")
+            .arg(filename)
+            .spawn()?;
+        let stdout = child.stdout.take().unwrap();
+        let stdout = std::io::BufReader::new(stdout);
+        let stdin = child.stdin.take().unwrap();
+
+        Ok(Self {
+            child,
+            input: stdin,
+            output: stdout,
+        })
+    }
+
+    /// Translate the instruction address in the executable to the function name and source
+    /// location.
+    ///
+    /// # Arguments
+    /// `address` Absolute address inside the executable which is translated to the function to
+    /// which it belongs.
+    pub fn resolve(&mut self, address: usize) -> Result<(String, String), TauphiError> {
+        use std::io::Write;
+        // Send the address as hex to addr2line.
+        writeln!(&mut self.input, "{:#x}", address)?;
+
+        //addr2line outputs two lines, first with the function name, second with the source
+        //location.
+
+        let mut function_name = String::new();
+        let _ = self.output.read_line(&mut function_name)?;
+        function_name.pop(); // Remove the newline.
+        let mut source = String::new();
+        let _ = self.output.read_line(&mut source)?;
+        source.pop(); // Remove the newline.
+
+        Ok((function_name, source))
+    }
+}
+
+impl Drop for SymbolResolver {
+    /// Kill the child and wait until it exits.
+    fn drop(&mut self) {
+        self.child
+            .kill()
+            .expect("Symbol resolver process(addr2line) could not be killed.");
+        self.child
+            .wait()
+            .expect("Failed to wait for the child process.");
     }
 }
