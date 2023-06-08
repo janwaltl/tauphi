@@ -16,7 +16,7 @@ use crate::error::TauphiError;
 const CALLCHAIN_DEPTH: usize = 123;
 
 /// A collected sample.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Sample {
     /// Instruction pointer
     pub ip: u64,
